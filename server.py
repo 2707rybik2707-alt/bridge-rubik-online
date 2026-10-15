@@ -498,6 +498,9 @@ def make_room(name, seats):
         'match_over': False,
         'history': [],
         'log': [],
+        'chat': [],
+        'reactions': [],
+        'reaction_seq': 0,
         'version': 1,
         'created': now(),
         'bot_due': None,
@@ -554,6 +557,8 @@ def api_state(room, pi):
         'awaiting_suit': room['awaiting_suit'] == pi,
         'history': room['history'][-40:],
         'log': list(reversed(room['log'][-40:])),
+        'chat': room.get('chat', [])[-60:],
+        'reactions': room.get('reactions', [])[-30:],
         'round_summary': room['round_summary'],
         'version': room['version'],
     }
@@ -833,6 +838,26 @@ class Handler(SimpleHTTPRequestHandler):
                     if pi != 0:
                         return self.send_json({'error': 'Только хозяин'}, 403)
                     start_match(room)
+                    return self.send_json({'ok': True})
+
+                if path == '/api/chat':
+                    msg = str(body.get('msg', '')).strip()[:160]
+                    if not msg:
+                        return self.send_json({'error': 'Пустое сообщение'}, 400)
+                    room.setdefault('chat', []).append({'t': int(now()), 'seat': pi, 'name': room['players'][pi]['name'], 'msg': msg})
+                    room['chat'] = room['chat'][-100:]
+                    room['version'] += 1
+                    return self.send_json({'ok': True})
+
+                if path == '/api/reaction':
+                    key = str(body.get('key', '')).strip()[:40]
+                    allowed = {'heat','laugh','rigged','mindblown','joker','boss','sneaky','combo','anime-laugh','anime-rage','anime-shock','anime-cry','anime-smug','anime-love','anime-applause','anime-sleep'}
+                    if key not in allowed:
+                        return self.send_json({'error': 'Неизвестная эмоция'}, 400)
+                    room['reaction_seq'] = int(room.get('reaction_seq', 0)) + 1
+                    room.setdefault('reactions', []).append({'id': room['reaction_seq'], 't': int(now()), 'seat': pi, 'key': key})
+                    room['reactions'] = room['reactions'][-40:]
+                    room['version'] += 1
                     return self.send_json({'ok': True})
 
                 if path == '/api/close_room':
