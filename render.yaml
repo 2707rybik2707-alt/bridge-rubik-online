@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: bridge-rubik-online
-    runtime: python
-    plan: free
-    buildCommand: python -m compileall server.py
-    startCommand: python server.py
-    healthCheckPath: /healthz
-    autoDeploy: true
