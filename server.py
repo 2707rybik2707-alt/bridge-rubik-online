@@ -501,6 +501,8 @@ def make_room(name, seats):
         'version': 1,
         'created': now(),
         'bot_due': None,
+        'couple_mode': False,
+        'couple_bot_difficulty': 'medium',
     }
     ROOMS[code] = room
     add_log(room, f'🚪 {name} создал комнату {code}.')
@@ -532,6 +534,7 @@ def api_state(room, pi):
     return {
         'room': room['code'],
         'max_players': room['max_players'],
+        'couple_mode': bool(room.get('couple_mode')),
         'started': room['started'],
         'round': room['round'],
         'dealer': room['dealer'],
@@ -617,6 +620,22 @@ class Handler(SimpleHTTPRequestHandler):
         path = urlparse(self.path).path
         with LOCK:
             try:
+                if path == '/api/create_couple':
+                    name = str(body.get('name', 'Рубик')).strip()[:24] or 'Рубик'
+                    difficulty = str(body.get('difficulty', 'medium')).lower()
+                    if difficulty not in BOT_LEVELS:
+                        difficulty = 'medium'
+                    room, token = make_room(name, 4)
+                    room['couple_mode'] = True
+                    room['couple_bot_difficulty'] = difficulty
+                    # Место 1: хозяин. Место 2: первый бот.
+                    # Место 3 зарезервировано для второго человека (напротив хозяина).
+                    # Второй бот будет добавлен автоматически после входа партнёра.
+                    room['players'].append({'name': 'Бот 1', 'token': None, 'hand': [], 'is_bot': True, 'difficulty': difficulty})
+                    room['scores'].append(0)
+                    add_log(room, f'❤️ Создан режим для двоих: {name} → Бот 1 → партнёр → Бот 2.')
+                    return self.send_json({'room': room['code'], 'token': token, 'seat': 0, 'couple_mode': True})
+
                 if path == '/api/create':
                     name = str(body.get('name', 'Рубик')).strip()[:24] or 'Игрок'
                     seats = max(2, min(4, int(body.get('seats', 2))))
@@ -634,6 +653,19 @@ class Handler(SimpleHTTPRequestHandler):
                     if len(room['players']) >= room['max_players']:
                         return self.send_json({'error': 'Комната заполнена'}, 409)
                     token = secrets.token_urlsafe(24)
+                    if room.get('couple_mode'):
+                        # В couple-mode разрешён ровно один второй человек.
+                        # До его входа список всегда: [хозяин, Бот 1].
+                        if len(room['players']) != 2 or not room['players'][1].get('is_bot'):
+                            return self.send_json({'error': 'Партнёр уже подключён или комната заполнена'}, 409)
+                        room['players'].append({'name': name, 'token': token, 'hand': [], 'is_bot': False, 'difficulty': None})
+                        room['scores'].append(0)
+                        partner_seat = 2
+                        difficulty = room.get('couple_bot_difficulty', 'medium')
+                        room['players'].append({'name': 'Бот 2', 'token': None, 'hand': [], 'is_bot': True, 'difficulty': difficulty})
+                        room['scores'].append(0)
+                        add_log(room, f'❤️ {name} занял место напротив хозяина. Бот 2 добавлен автоматически.')
+                        return self.send_json({'room': code, 'token': token, 'seat': partner_seat, 'couple_mode': True})
                     room['players'].append({'name': name, 'token': token, 'hand': [], 'is_bot': False, 'difficulty': None})
                     room['scores'].append(0)
                     add_log(room, f'➕ {name} вошёл в комнату.')
@@ -649,6 +681,8 @@ class Handler(SimpleHTTPRequestHandler):
                     return self.send_json({'error': 'Нет доступа'}, 403)
 
                 if path == '/api/add_bot':
+                    if room.get('couple_mode'):
+                        return self.send_json({'error': 'В режиме для двоих боты расставляются автоматически'}, 409)
                     if pi != 0:
                         return self.send_json({'error': 'Только хозяин может добавлять ботов'}, 403)
                     if room['started']:
@@ -664,6 +698,8 @@ class Handler(SimpleHTTPRequestHandler):
                     return self.send_json({'ok': True})
 
                 if path == '/api/remove_bot':
+                    if room.get('couple_mode'):
+                        return self.send_json({'error': 'В режиме для двоих боты расставляются автоматически'}, 409)
                     if pi != 0:
                         return self.send_json({'error': 'Только хозяин'}, 403)
                     if room['started']:
