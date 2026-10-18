@@ -64,7 +64,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -euxo pipefail
+            set -eu
             APK=android/app/build/outputs/apk/debug/app-debug.apk
             adb install -r "$APK" | tee adb-install.txt
             grep -q "Success" adb-install.txt
