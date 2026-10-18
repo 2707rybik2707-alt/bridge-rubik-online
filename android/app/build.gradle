@@ -7,11 +7,11 @@ android {
     compileSdk 35
 
     defaultConfig {
-        applicationId 'com.bridgerubik.game.mobile66'
+        applicationId 'com.bridgerubik.mobile'
         minSdk 23
         targetSdk 35
-        versionCode 66
-        versionName '0.66-mobile'
+        versionCode 67
+        versionName '0.67-mobile'
     }
 
     buildTypes {
