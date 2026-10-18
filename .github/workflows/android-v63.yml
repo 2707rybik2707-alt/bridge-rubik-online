@@ -1,4 +1,4 @@
-name: Build and test BridgeRubik Android v66
+name: Build and test BridgeRubik Android v67
 
 on:
   workflow_dispatch:
@@ -52,10 +52,11 @@ jobs:
           test -s "$APK"
           /usr/local/lib/android/sdk/build-tools/35.0.0/apksigner verify --verbose "$APK"
           /usr/local/lib/android/sdk/build-tools/35.0.0/aapt dump badging "$APK" | tee apk-badging.txt
-          grep -q "package: name='com.bridgerubik.game.mobile66'" apk-badging.txt
+          grep -q "package: name='com.bridgerubik.mobile'" apk-badging.txt
+          grep -q "versionCode='67'" apk-badging.txt
           grep -q "launchable-activity: name='com.bridgerubik.game.MainActivity'" apk-badging.txt
 
-      - name: Install and launch on Android emulator
+      - name: Install and launch on clean Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -64,48 +65,34 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            adb install -r android/app/build/outputs/apk/debug/app-debug.apk | tee adb-install.txt
+            adb uninstall com.bridgerubik.mobile >/dev/null 2>&1 || true
+            adb install android/app/build/outputs/apk/debug/app-debug.apk | tee adb-install.txt
             grep -q "Success" adb-install.txt
-            adb shell pm list packages | grep -q "package:com.bridgerubik.game.mobile66"
-            adb shell monkey -p com.bridgerubik.game.mobile66 -c android.intent.category.LAUNCHER 1
+            adb shell pm list packages | grep -q "package:com.bridgerubik.mobile"
+            adb shell am start -W -n com.bridgerubik.mobile/com.bridgerubik.game.MainActivity | tee activity-start.txt
             sleep 8
-            adb shell pidof com.bridgerubik.game.mobile66 | tee app-pid.txt
+            adb shell pidof com.bridgerubik.mobile | tee app-pid.txt
             test -s app-pid.txt
             adb exec-out screencap -p > android-launch.png
-            adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | tee resumed-activity.txt || true
-            adb logcat -d -t 500 > android-logcat.txt
+            adb logcat -d -t 600 > android-logcat.txt
             ! grep -E "FATAL EXCEPTION|AndroidRuntime.*FATAL|Unable to instantiate activity|ClassNotFoundException" android-logcat.txt
 
       - name: Upload tested APK
         uses: actions/upload-artifact@v4
         with:
-          name: BridgeRubik-v66-EMULATOR-TESTED-apk
+          name: BridgeRubik-v67-CLEAN-INSTALL-TESTED-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
       - name: Upload emulator evidence
         uses: actions/upload-artifact@v4
         with:
-          name: BridgeRubik-v66-emulator-evidence
+          name: BridgeRubik-v67-emulator-evidence
           path: |
             android-launch.png
             adb-install.txt
+            activity-start.txt
             app-pid.txt
-            resumed-activity.txt
             android-logcat.txt
             apk-badging.txt
-          if-no-files-found: error
-
-      - name: Package full local Android build toolchain
-        shell: bash
-        run: |
-          mkdir -p local-android-toolchain/platforms/android-35
-          cp -a /usr/local/lib/android/sdk/build-tools/35.0.0 local-android-toolchain/build-tools-35.0.0
-          cp /usr/local/lib/android/sdk/platforms/android-35/android.jar local-android-toolchain/platforms/android-35/android.jar
-
-      - name: Upload local Android build toolchain
-        uses: actions/upload-artifact@v4
-        with:
-          name: Android-local-build-toolchain-35
-          path: local-android-toolchain
           if-no-files-found: error
