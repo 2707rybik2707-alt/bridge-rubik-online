@@ -1,0 +1,26 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.bridgerubik.game'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.bridgerubik.game'
+        minSdk 23
+        targetSdk 35
+        versionCode 63
+        versionName '0.63-mobile'
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+        }
+        release {
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+}
