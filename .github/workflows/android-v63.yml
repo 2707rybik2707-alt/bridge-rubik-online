@@ -1,4 +1,4 @@
-name: Build BridgeRubik Android v65
+name: Build and test BridgeRubik Android v66
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
     branches: [ android-mobile ]
 
 jobs:
-  build:
+  build-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -38,35 +38,79 @@ jobs:
           cp index.html android/app/src/main/assets/index.html
           test -s android/app/src/main/assets/index.html
 
-      - name: Build debug APK
+      - name: Build debug APK with Android Gradle Plugin
         working-directory: android
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-        run: gradle --no-daemon assembleDebug
+        run: gradle --no-daemon clean assembleDebug
 
-      - name: Verify APK exists
-        run: test -s android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Verify package and signature
+        shell: bash
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          /usr/local/lib/android/sdk/build-tools/35.0.0/apksigner verify --verbose "$APK"
+          /usr/local/lib/android/sdk/build-tools/35.0.0/aapt dump badging "$APK" | tee apk-badging.txt
+          grep -q "package: name='com.bridgerubik.game.mobile66'" apk-badging.txt
+          grep -q "launchable-activity: name='com.bridgerubik.game.MainActivity'" apk-badging.txt
 
-      - name: Upload APK
+      - name: Install and launch on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -euxo pipefail
+            APK=android/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r "$APK" | tee adb-install.txt
+            grep -q "Success" adb-install.txt
+            adb shell pm list packages | grep -q "package:com.bridgerubik.game.mobile66"
+            adb shell monkey -p com.bridgerubik.game.mobile66 -c android.intent.category.LAUNCHER 1
+            sleep 8
+            adb shell pidof com.bridgerubik.game.mobile66 | tee app-pid.txt
+            test -s app-pid.txt
+            adb exec-out screencap -p > android-launch.png
+            adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | tee resumed-activity.txt || true
+            adb logcat -d -t 500 > android-logcat.txt
+            if grep -E "FATAL EXCEPTION|AndroidRuntime.*FATAL|Unable to instantiate activity|ClassNotFoundException" android-logcat.txt; then
+              echo "Fatal Android runtime error detected"
+              exit 1
+            fi
+
+      - name: Upload tested APK
         uses: actions/upload-artifact@v4
         with:
-          name: BridgeRubik-v65-debug-apk
+          name: BridgeRubik-v66-EMULATOR-TESTED-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      - name: Package Android APK signing tools
-        shell: bash
-        run: |
-          mkdir -p signing-tools/lib
-          cp /usr/local/lib/android/sdk/build-tools/35.0.0/apksigner signing-tools/apksigner
-          cp /usr/local/lib/android/sdk/build-tools/35.0.0/lib/apksigner.jar signing-tools/lib/apksigner.jar
-          cp /usr/local/lib/android/sdk/build-tools/35.0.0/zipalign signing-tools/zipalign
-          chmod +x signing-tools/apksigner signing-tools/zipalign
-
-      - name: Upload Android signing tools
+      - name: Upload emulator evidence
         uses: actions/upload-artifact@v4
         with:
-          name: Android-signing-tools-35
-          path: signing-tools
+          name: BridgeRubik-v66-emulator-evidence
+          path: |
+            android-launch.png
+            adb-install.txt
+            app-pid.txt
+            resumed-activity.txt
+            android-logcat.txt
+            apk-badging.txt
+          if-no-files-found: error
+
+      - name: Package full local Android build toolchain
+        shell: bash
+        run: |
+          mkdir -p local-android-toolchain/platforms/android-35
+          cp -a /usr/local/lib/android/sdk/build-tools/35.0.0 local-android-toolchain/build-tools-35.0.0
+          cp /usr/local/lib/android/sdk/platforms/android-35/android.jar local-android-toolchain/platforms/android-35/android.jar
+
+      - name: Upload local Android build toolchain
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-local-build-toolchain-35
+          path: local-android-toolchain
           if-no-files-found: error
