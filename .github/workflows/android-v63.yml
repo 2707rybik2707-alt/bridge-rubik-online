@@ -3,7 +3,7 @@ name: Build BridgeRubik Android v63
 on:
   workflow_dispatch:
   push:
-    branches: [ android-v63 ]
+    branches: [ main, android-v63 ]
 
 jobs:
   build:
