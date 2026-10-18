@@ -64,9 +64,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -eu
-            APK=android/app/build/outputs/apk/debug/app-debug.apk
-            adb install -r "$APK" | tee adb-install.txt
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk | tee adb-install.txt
             grep -q "Success" adb-install.txt
             adb shell pm list packages | grep -q "package:com.bridgerubik.game.mobile66"
             adb shell monkey -p com.bridgerubik.game.mobile66 -c android.intent.category.LAUNCHER 1
@@ -76,10 +74,7 @@ jobs:
             adb exec-out screencap -p > android-launch.png
             adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | tee resumed-activity.txt || true
             adb logcat -d -t 500 > android-logcat.txt
-            if grep -E "FATAL EXCEPTION|AndroidRuntime.*FATAL|Unable to instantiate activity|ClassNotFoundException" android-logcat.txt; then
-              echo "Fatal Android runtime error detected"
-              exit 1
-            fi
+            ! grep -E "FATAL EXCEPTION|AndroidRuntime.*FATAL|Unable to instantiate activity|ClassNotFoundException" android-logcat.txt
 
       - name: Upload tested APK
         uses: actions/upload-artifact@v4
